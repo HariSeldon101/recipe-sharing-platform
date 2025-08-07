@@ -1,0 +1,473 @@
+# Cursor Rules for NextJS + Supabase + Tailwind Project
+
+## Tech Stack
+- NextJS 14+ with App Router
+- TypeScript (strict mode)
+- Tailwind CSS for styling
+- Supabase for backend (auth, database, storage)
+- shadcn/ui for components
+- Framer Motion for animations
+- Zod for validation
+- React Hook Form for forms
+
+## Code Style and Structure
+
+### General Rules
+- Always use TypeScript with proper type definitions
+- Prefer functional components with hooks over class components
+- Use async/await over .then() chains
+- Include error handling in all async operations
+- Write self-documenting code with clear variable names
+- Keep components small and focused (single responsibility)
+
+### File Naming Conventions
+- Components: PascalCase (e.g., `RecipeCard.tsx`)
+- Utilities/Hooks: camelCase (e.g., `useRecipes.ts`, `formatDate.ts`)
+- Types/Interfaces: PascalCase with descriptive names
+- API routes: kebab-case (e.g., `api/get-recipes/route.ts`)
+
+### Project Structure
+```
+src/
+├── app/                    # NextJS app router pages
+│   ├── (auth)/            # Auth group routes
+│   ├── (dashboard)/       # Protected routes
+│   └── api/               # API routes
+├── components/
+│   ├── ui/                # shadcn/ui components
+│   ├── forms/             # Form components
+│   ├── layouts/           # Layout components
+│   └── features/          # Feature-specific components
+├── lib/
+│   ├── supabase/          # Supabase client and queries
+│   ├── utils/             # Utility functions
+│   └── validations/       # Zod schemas
+├── hooks/                 # Custom React hooks
+├── types/                 # TypeScript type definitions
+└── styles/               # Global styles
+```
+
+## NextJS Specific Rules
+
+### App Router Best Practices
+- Use server components by default, client components only when needed
+- Add "use client" directive only for interactive components
+- Implement proper loading.tsx and error.tsx for each route
+- Use metadata exports for SEO
+- Leverage parallel routes and intercepting routes where applicable
+
+### Data Fetching
+```typescript
+// Server Component - Preferred for data fetching
+async function RecipePage({ params }: { params: { id: string } }) {
+  const recipe = await getRecipe(params.id)
+  return <RecipeDetail recipe={recipe} />
+}
+
+// Client Component - Only when needed for interactivity
+"use client"
+import { useEffect, useState } from 'react'
+
+function InteractiveRecipeList() {
+  // Client-side data fetching only when necessary
+}
+```
+
+### API Routes
+```typescript
+// app/api/recipes/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
+
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = createRouteHandlerClient({ cookies })
+    // Implementation
+    return NextResponse.json({ data })
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+```
+
+## Supabase Integration
+
+### Client Setup
+```typescript
+// lib/supabase/client.ts
+import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
+import type { Database } from '@/types/database.types'
+
+export const createClient = () =>
+  createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+```
+
+### Database Queries
+- Always use TypeScript types generated from Supabase
+- Implement Row Level Security (RLS) policies
+- Use proper error handling
+- Create reusable query functions
+
+```typescript
+// lib/supabase/queries/recipes.ts
+import { createClient } from '../client'
+import type { Recipe } from '@/types/database.types'
+
+export async function getRecipes(filters?: RecipeFilters) {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase
+    .from('recipes')
+    .select(`
+      *,
+      users (
+        id,
+        display_name,
+        avatar_url
+      ),
+      ingredients (*),
+      reviews (
+        rating
+      )
+    `)
+    .order('created_at', { ascending: false })
+  
+  if (error) throw error
+  return data as Recipe[]
+}
+```
+
+### Authentication
+```typescript
+// Always check auth status in server components
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+
+export default async function ProtectedPage() {
+  const supabase = createServerComponentClient({ cookies })
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (!session) {
+    redirect('/login')
+  }
+  
+  // Page content
+}
+```
+
+## Tailwind CSS & Styling
+
+### Class Organization
+- Use Tailwind classes in logical order: layout → spacing → typography → colors → effects
+- Prefer Tailwind utilities over custom CSS
+- Use cn() utility for conditional classes
+
+```typescript
+// lib/utils.ts
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+// Usage in components
+<div className={cn(
+  "flex items-center justify-between p-4",
+  "bg-white dark:bg-gray-900",
+  "rounded-lg shadow-sm",
+  isActive && "ring-2 ring-blue-500"
+)} />
+```
+
+### Responsive Design
+- Always design mobile-first
+- Use responsive prefixes consistently
+```typescript
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+```
+
+### Dark Mode
+- Implement dark mode support using Tailwind's dark: prefix
+- Use CSS variables for theme colors
+
+## Component Patterns
+
+### Reusable Components
+```typescript
+// components/ui/Button.tsx
+import { forwardRef } from 'react'
+import { cn } from '@/lib/utils'
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'ghost'
+  size?: 'sm' | 'md' | 'lg'
+  isLoading?: boolean
+}
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant = 'primary', size = 'md', isLoading, children, disabled, ...props }, ref) => {
+    return (
+      <button
+        ref={ref}
+        disabled={disabled || isLoading}
+        className={cn(
+          'inline-flex items-center justify-center rounded-md font-medium transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2',
+          'disabled:pointer-events-none disabled:opacity-50',
+          // variant styles
+          variant === 'primary' && 'bg-blue-600 text-white hover:bg-blue-700',
+          // size styles
+          size === 'sm' && 'h-8 px-3 text-sm',
+          size === 'md' && 'h-10 px-4',
+          size === 'lg' && 'h-12 px-6',
+          className
+        )}
+        {...props}
+      >
+        {isLoading ? <Spinner className="mr-2" /> : null}
+        {children}
+      </button>
+    )
+  }
+)
+
+Button.displayName = 'Button'
+```
+
+### Custom Hooks
+```typescript
+// hooks/useRecipes.ts
+import { useEffect, useState } from 'react'
+import { getRecipes } from '@/lib/supabase/queries/recipes'
+import type { Recipe } from '@/types/database.types'
+
+export function useRecipes(filters?: RecipeFilters) {
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+
+  useEffect(() => {
+    const fetchRecipes = async () => {
+      try {
+        setIsLoading(true)
+        const data = await getRecipes(filters)
+        setRecipes(data)
+      } catch (err) {
+        setError(err as Error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchRecipes()
+  }, [filters])
+
+  return { recipes, isLoading, error }
+}
+```
+
+## Form Handling
+
+### With React Hook Form + Zod
+```typescript
+// lib/validations/recipe.ts
+import { z } from 'zod'
+
+export const recipeSchema = z.object({
+  title: z.string().min(3, 'Title must be at least 3 characters'),
+  description: z.string().min(10, 'Description must be at least 10 characters'),
+  prepTime: z.number().min(0),
+  cookTime: z.number().min(0),
+  servings: z.number().min(1),
+  ingredients: z.array(z.object({
+    name: z.string(),
+    amount: z.string(),
+    unit: z.string()
+  })).min(1, 'At least one ingredient is required'),
+})
+
+export type RecipeFormData = z.infer<typeof recipeSchema>
+
+// components/forms/RecipeForm.tsx
+"use client"
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { recipeSchema, type RecipeFormData } from '@/lib/validations/recipe'
+
+export function RecipeForm() {
+  const form = useForm<RecipeFormData>({
+    resolver: zodResolver(recipeSchema),
+    defaultValues: {
+      title: '',
+      ingredients: [{ name: '', amount: '', unit: '' }]
+    }
+  })
+
+  const onSubmit = async (data: RecipeFormData) => {
+    try {
+      // Submit logic
+    } catch (error) {
+      // Error handling
+    }
+  }
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      {/* Form fields */}
+    </form>
+  )
+}
+```
+
+## Error Handling
+
+### Consistent Error Boundaries
+```typescript
+// app/error.tsx
+'use client'
+
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string }
+  reset: () => void
+}) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center">
+      <h2 className="mb-4 text-2xl font-bold">Something went wrong!</h2>
+      <button
+        onClick={reset}
+        className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+      >
+        Try again
+      </button>
+    </div>
+  )
+}
+```
+
+### API Error Responses
+```typescript
+// Consistent error format
+export function handleApiError(error: unknown) {
+  console.error('API Error:', error)
+  
+  if (error instanceof Error) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: 400 }
+    )
+  }
+  
+  return NextResponse.json(
+    { error: 'An unexpected error occurred' },
+    { status: 500 }
+  )
+}
+```
+
+## Performance Optimization
+
+### Image Optimization
+```typescript
+import Image from 'next/image'
+
+// Always use Next.js Image component
+<Image
+  src={recipe.imageUrl}
+  alt={recipe.title}
+  width={400}
+  height={300}
+  className="rounded-lg object-cover"
+  placeholder="blur"
+  blurDataURL={recipe.blurDataUrl}
+  priority={isAboveFold}
+/>
+```
+
+### Code Splitting
+- Use dynamic imports for heavy components
+```typescript
+import dynamic from 'next/dynamic'
+
+const RichTextEditor = dynamic(
+  () => import('@/components/RichTextEditor'),
+  { 
+    loading: () => <EditorSkeleton />,
+    ssr: false 
+  }
+)
+```
+
+### Data Caching
+```typescript
+// Use NextJS caching strategies
+export const revalidate = 3600 // Revalidate every hour
+
+// Or use on-demand revalidation
+import { revalidatePath } from 'next/cache'
+
+export async function createRecipe(data: RecipeFormData) {
+  // Create recipe
+  revalidatePath('/recipes')
+}
+```
+
+## Testing Patterns
+
+### Component Testing
+```typescript
+// __tests__/RecipeCard.test.tsx
+import { render, screen } from '@testing-library/react'
+import { RecipeCard } from '@/components/RecipeCard'
+
+describe('RecipeCard', () => {
+  it('renders recipe title', () => {
+    const mockRecipe = {
+      title: 'Test Recipe',
+      // ... other props
+    }
+    
+    render(<RecipeCard recipe={mockRecipe} />)
+    expect(screen.getByText('Test Recipe')).toBeInTheDocument()
+  })
+})
+```
+
+## AI Coding Assistant Tips
+
+When asking for code generation:
+1. Be specific about the component/function needed
+2. Mention the tech stack (NextJS 14, TypeScript, Tailwind, Supabase)
+3. Specify if it should be a server or client component
+4. Include any specific patterns from these rules
+
+Example prompts:
+- "Create a server component in NextJS 14 that fetches recipes from Supabase with TypeScript"
+- "Build a responsive recipe card component using Tailwind CSS with dark mode support"
+- "Generate a Zod schema for recipe validation with React Hook Form integration"
+
+## Security Best Practices
+
+1. Always validate user input on both client and server
+2. Use Supabase RLS policies for data access control
+3. Sanitize HTML content before rendering
+4. Never expose sensitive API keys in client code
+5. Implement rate limiting on API routes
+6. Use CSRF protection for forms
+
+## Common Patterns to Follow
+
+1. **Loading States**: Always show loading indicators
+2. **Empty States**: Design meaningful empty states
+3. **Error Messages**: Provide helpful, user-friendly error messages
+4. **Accessibility**: Include ARIA labels, semantic HTML
+5. **SEO**: Use proper meta tags and structured data
+6. **Progressive Enhancement**: Ensure basic functionality works without JavaScript
